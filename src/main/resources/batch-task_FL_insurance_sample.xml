@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:c="http://www.springframework.org/schema/c"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:lang="http://www.springframework.org/schema/lang"
+       xmlns:p="http://www.springframework.org/schema/p"
+       xmlns:util="http://www.springframework.org/schema/util"
+       xmlns:batch="http://www.springframework.org/schema/batch" 
+       xmlns:task="http://www.springframework.org/schema/task"
+
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+          http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.0.xsd
+          http://www.springframework.org/schema/lang http://www.springframework.org/schema/lang/spring-lang-4.0.xsd
+          http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util-4.0.xsd
+          http://www.springframework.org/schema/batch http://www.springframework.org/schema/batch/spring-batch.xsd
+          http://www.springframework.org/schema/task http://www.springframework.org/schema/task/spring-task.xsd
+">
+
+    <import resource="classpath:database.xml" />
+    <context:annotation-config/>
+    
+    <bean id="transactionManager"
+          class="org.springframework.batch.support.transaction.ResourcelessTransactionManager" />
+
+    <bean id="taskExecutor" class="org.springframework.core.task.SimpleAsyncTaskExecutor">
+        <property name="concurrencyLimit" value="15"/>
+    </bean>
+        
+    <!-- stored job-meta in database -->
+    <bean id="jobRepository"
+          class="org.springframework.batch.core.repository.support.JobRepositoryFactoryBean">
+        <property name="dataSource" ref="dataSource" />
+        <property name="transactionManager" ref="transactionManager" />
+        <property name="databaseType" value="derby" />
+    </bean>
+ 
+    <bean id="jobLauncher"
+          class="org.springframework.batch.core.launch.support.SimpleJobLauncher">
+        <property name="jobRepository" ref="jobRepository" />
+    </bean>
+    
+    <batch:job id="importInsurance" >
+        <batch:step id="importInsurance_step1" allow-start-if-complete="true">
+            <batch:tasklet task-executor="taskExecutor">
+                <batch:chunk reader="cvsFileItemReader" writer="insuranceItemWriter" 
+                             commit-interval="100">
+                </batch:chunk>
+            </batch:tasklet>
+        </batch:step>
+        
+    </batch:job>
+ 
+    <bean id="cvsFileItemReader" class="org.springframework.batch.item.file.FlatFileItemReader" scope="step">
+        <property name="linesToSkip" value="1"/>
+        <property name="encoding" value="UTF-8"/>
+<!--        <property name="resource" value="file:#{jobParameters['input.file']}" />-->
+        <property name="resource" value="classpath:FL_insurance_sample.csv" />
+        
+        <property name="lineMapper">
+            <bean class="org.springframework.batch.item.file.mapping.DefaultLineMapper">
+                <property name="lineTokenizer">
+                    <bean
+                        class="org.springframework.batch.item.file.transform.DelimitedLineTokenizer">
+                        <property name="names" value="policyID,statecode,county,eq_site_limit,hu_site_limit,fl_site_limit,fr_site_limit,tiv_2011,tiv_2012,eq_site_deductible,hu_site_deductible,fl_site_deductible,fr_site_deductible,point_latitude,point_longitude,line,construction,point_granularity" />
+                    </bean>
+                </property>
+                <property name="fieldSetMapper">
+
+                   <bean
+                           class="org.springframework.batch.item.file.mapping.BeanWrapperFieldSetMapper">
+                           <property name="prototypeBeanName" value="insurancePrototype" />
+                   </bean>
+                    
+                </property>
+            </bean>
+        </property>
+    </bean>
+ 
+    <bean id="insuranceItemWriter"
+          class="org.springframework.batch.item.database.JdbcBatchItemWriter">
+        <property name="assertUpdates" value="true" />
+        <property name="itemSqlParameterSourceProvider">
+            <bean class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider" />
+        </property>
+        <property name="sql"
+                  value="INSERT INTO FL_INSURANCE_SAMPLE 
+                    (policyID,statecode,county,eq_site_limit,hu_site_limit,fl_site_limit,fr_site_limit,tiv_2011,tiv_2012,eq_site_deductible,hu_site_deductible,fl_site_deductible,fr_site_deductible,point_latitude,point_longitude,line,construction,point_granularity) 
+                    VALUES
+                    (:policyID,:statecode,:county,:eqSiteLimit,:huSiteLimit,:flSiteLimit,:frSiteLimit,:tiv2011,:tiv2012,:eqSiteDeductible,:huSiteDeductible,:flSiteDeductible,:frSiteDeductible,:pointLatitude,:pointLongitude,:line,:construction,:pointGranularity)" />
+        <property name="dataSource" ref="dataSource" />
+    </bean>
+
+    <bean id="insurancePrototype" class="pl.altkom.sping.batch.sample.model.Insurance" scope="prototype"/>
+
+    
+</beans>
